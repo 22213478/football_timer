@@ -1,56 +1,131 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-import tkinter as tk
 from PIL import Image, ImageTk
 import time
 import re
 
-# hex → rgb
+def get_events_data(url):
+    event_url = url.split('?')[0] + "?tab=record"
+    options = Options()
+    options.add_argument('--headless')
+    driver = webdriver.Chrome(options=options)
+    driver.get(event_url)
+    time.sleep(2.5)
+    html = driver.page_source
+    driver.quit()
+
+    soup = BeautifulSoup(html, "html.parser")
+    events = []
+
+    timeline_blocks = soup.find_all("div", class_="item_timeline")
+    for block in timeline_blocks:
+        # 시간/추가시간
+        time_tag = block.find("span", class_="txt_time")
+        info_tag = block.find("span", class_="txt_info")
+        minute = ""
+        extra_minute = False
+        if time_tag:
+            minute = time_tag.get_text(strip=True)
+        elif info_tag and "추가시간" in info_tag.get_text():
+            minute = "추가시간 +" + info_tag.get_text(strip=True).replace("추가시간", "").replace(" ", "")
+            extra_minute = True
+
+        kind_tag = block.find("span", class_=lambda c: c and c.startswith("ico_gamecenter"))
+        kind = kind_tag.get_text(strip=True) if kind_tag else ""
+
+        # 교체 이벤트면 txt_name을 모두 찾음
+        if "교체" in kind or "change" in kind:
+            txt_names = block.find_all("span", class_="txt_name")
+            for name_tag in txt_names:
+                main_name = name_tag.find("span", class_="txt_g")
+                player = main_name.get_text(strip=True) if main_name else ""
+                # txt_sub가 span, em 어느 쪽이든 잡기
+                sub = name_tag.find("span", class_="txt_sub") or name_tag.find("em", class_="txt_sub")
+                sub_text = sub.get_text(strip=True) if sub else ""
+                if "(IN)" in sub_text:
+                    events.append(f"{minute} {player} (IN)")
+                elif "(OUT)" in sub_text:
+                    events.append(f"    {player} (OUT)")
+        else:
+            # 득점, 경고, 퇴장 등: txt_g + (txt_sub)
+            name_tag = block.find("span", class_="txt_name")
+            player = ""
+            sub_player = ""
+            if name_tag:
+                main_name = name_tag.find("span", class_="txt_g")
+                player = main_name.get_text(strip=True) if main_name else ""
+                sub = name_tag.find("span", class_="txt_sub") or name_tag.find("em", class_="txt_sub")
+                if sub:
+                    sub_player = sub.get_text(strip=True)
+            else:
+                if kind in ("경기종료", "전반종료"):
+                    events.append(f"[{kind}]")
+                    continue
+
+            if kind in ("경기종료", "전반종료"):
+                events.append(f"[{kind}]")
+            elif extra_minute and "추가시간" in minute:
+                events.append(minute)
+            elif kind == "골":
+                event_str = f"{minute} {player} (득점)"
+                events.append(event_str)
+                if sub_player and "도움" in sub_player:
+                    # 괄호/도움/공백 등 모두 지우고 선수 이름만 남기기
+                    import re
+                    clean_name = re.sub(r"[\(\)\s]*도움[\)\(\s]*", "", sub_player)
+                    clean_name = clean_name.strip()
+                    # 이름이 아예 없으면 그냥 출력 안함
+                    if clean_name:
+                        events.append(f"    {clean_name} (도움))")
+
+            elif "경고" in kind:
+                events.append(f"{minute} {player} (경고)")
+            elif "퇴장" in kind:
+                events.append(f"{minute} {player} (퇴장)")
+            elif player:
+                events.append(f"{minute} {player} ({kind})")
+
+    return events
+
 def hex_to_rgb(hex_color):
     hex_color = hex_color.strip().lstrip('#')
     if len(hex_color) == 3:
         hex_color = ''.join([c*2 for c in hex_color])
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-# SVG에서 path의 fill 색상 추출
 def extract_svg_color(svg):
     if svg:
         for path in svg.find_all('path'):
             if path.has_attr("fill") and path["fill"].startswith("#"):
                 return path["fill"]
-            # style="fill:#xxxxxx"
             if path.has_attr("style"):
                 m = re.search(r'fill:\s*(#[0-9a-fA-F]{6})', path["style"])
                 if m:
                     return m.group(1)
     return None
 
-# 셔츠 색 입히기 (투명 PNG 템플릿 필요)
 def colorize_shirt(template_path, shirt_color, size=(44, 44), threshold=220):
     img = Image.open(template_path).convert("RGBA")
     img = img.resize(size)
     datas = img.getdata()
     newData = []
     for item in datas:
-        # 흰색·밝은색은 유니폼 컬러로 덮고, 나머지는 투명/외곽선 유지
-        if item[3] == 0:  # 완전 투명
+        if item[3] == 0:
             newData.append(item)
-        elif all(x >= threshold for x in item[:3]):  # 밝은 부분
+        elif all(x >= threshold for x in item[:3]):
             newData.append(shirt_color + (255,))
         else:
             newData.append(item)
     img.putdata(newData)
     return img
 
-# 라인업 파싱 (SVG 컬러 포함)
 def get_lineup_data(url, shirt_template="shirt_transparent.png"):
-    # Selenium으로 동적 HTML 렌더링 후 파싱!
     options = Options()
     options.add_argument('--headless')
     driver = webdriver.Chrome(options=options)
     driver.get(url)
-    time.sleep(2.5)  # JS 렌더 대기
+    time.sleep(2.5)
     html = driver.page_source
     driver.quit()
     soup = BeautifulSoup(html, "html.parser")
@@ -62,22 +137,17 @@ def get_lineup_data(url, shirt_template="shirt_transparent.png"):
     teams = []
     svg_colors = []
     for idx, group in enumerate(lineup_groups):
-        # 1. 팀명·포메이션
         team_name = group.find('strong', class_='tit_team').text.strip()
         formation_text = group.find('span', class_='txt_lineup').get_text(strip=True)
         formation = re.search(r'(\d+\-\d+(?:\-\d+)*)', formation_text)
         formation = formation.group(1) if formation else "알수없음"
-
-        # 2. SVG 유니폼 색상
         svg = group.find('svg')
         fill = extract_svg_color(svg)
         if fill:
             team_rgb = hex_to_rgb(fill)
         else:
-            team_rgb = (220,40,40) if idx == 0 else (30,80,210)  # fallback
+            team_rgb = (220,40,40) if idx == 0 else (30,80,210)
         svg_colors.append(team_rgb)
-
-        # 3. 선수명·등번호 파싱 (골키퍼+필드 플레이어)
         players = []
         player_blocks = group.find_all('div', class_='lineup_player')
         for block in player_blocks:
@@ -97,7 +167,6 @@ def get_lineup_data(url, shirt_template="shirt_transparent.png"):
         })
     return teams[0], teams[1], svg_colors
 
-# 포메이션대로 중앙 정렬해서 셔츠/이름 출력
 def visualize_formation_with_shirt(team, top, bottom, canvas, width, shirt_color, shirt_template_path, reverse_order=False):
     formation_list = [int(x) for x in team["formation"].split('-')]
     players = team["players"]
@@ -118,10 +187,8 @@ def visualize_formation_with_shirt(team, top, bottom, canvas, width, shirt_color
     n_lines = len(lines) + 1
     h_per_line = (bottom - top) // (n_lines + 1)
 
-    # 팀명, 포메이션
     canvas.create_text(width//2, top+20, text=f"{team['team_name']} ({team['formation']})", fill="#fff", font=("맑은 고딕", 18, "bold"))
 
-    # 골키퍼 셔츠 (노란색)
     gk_img = colorize_shirt(shirt_template_path, (255, 225, 50), size=(54, 54))
     gk_img_tk = ImageTk.PhotoImage(gk_img)
     x = width // 2
@@ -132,7 +199,6 @@ def visualize_formation_with_shirt(team, top, bottom, canvas, width, shirt_color
     if not hasattr(canvas, 'img_refs'): canvas.img_refs = []
     canvas.img_refs.append(gk_img_tk)
 
-    # 필드 플레이어 셔츠
     for i, line in enumerate(reversed(lines)):
         n = len(line)
         y = top + h_per_line*(i+1)
@@ -145,28 +211,3 @@ def visualize_formation_with_shirt(team, top, bottom, canvas, width, shirt_color
             canvas.create_text(x, y, text=num, fill="black", font=("맑은 고딕", 15, "bold"))
             canvas.create_text(x, y+24, text=name, fill="#fff", font=("맑은 고딕", 10))
             canvas.img_refs.append(field_img_tk)
-
-def main():
-    # url 입력 없이 테스트용 경기 고정!
-    url = "https://sports.daum.net/match/80085755?tab=lineup"
-    shirt_template = "shirt_transparent.png"  # 투명 PNG 필요
-
-    print("데이터를 가져오는 중... (약 2~4초)")
-    home, away, colors = get_lineup_data(url, shirt_template)
-    print("라인업 파싱 성공! 시각화 중...")
-
-    width, height = 820, 900
-    root = tk.Tk()
-    root.title(f"라인업: {home['team_name']} vs {away['team_name']}")
-    root.geometry(f"{width}x{height}")
-    canvas = tk.Canvas(root, width=width, height=height, bg="#1a273a")
-    canvas.pack()
-    mid = height // 2
-
-    visualize_formation_with_shirt(home, top=60, bottom=mid-10, canvas=canvas, width=width, shirt_color=colors[0], shirt_template_path=shirt_template, reverse_order=False)
-    visualize_formation_with_shirt(away, top=mid+10, bottom=height-60, canvas=canvas, width=width, shirt_color=colors[1], shirt_template_path=shirt_template, reverse_order=True)
-
-    root.mainloop()
-
-if __name__ == "__main__":
-    main()
