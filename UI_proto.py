@@ -2,7 +2,7 @@ import tkinter as tk
 import threading
 import time
 import subprocess
-from get_info import get_events_data, get_lineup_data, visualize_formation_with_shirt
+from get_info import *
 import ocr
 
 def show_sync_mode_start():
@@ -56,18 +56,44 @@ def show_formation_window():
     try:
         url = get_current_url() + "?tab=lineup"
         home, away, colors = get_lineup_data(url, shirt_template="shirt_transparent.png")
+        # ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+        # 이벤트 정보(득점, 어시, 경고, 교체 등)
+        # tab=record로 이벤트를 가져온다!
+        event_url = get_current_url() + "?tab=record"
+        events = get_events_data(event_url)
+        event_map = map_player_events(events)
+        subs, sub_in_players = extract_substitutions(events)
+        # 교체 적용
+        home["players"] = apply_substitutions(home["players"], subs)
+        away["players"] = apply_substitutions(away["players"], subs)
+        # 아이콘 준비
+        icon_imgs = {
+            "goal": Image.open("goal.png"),
+            "assist": Image.open("assist.png"),
+            "yellow": make_card_icon((255, 235, 59)),
+            "red": make_card_icon((230, 20, 20))
+        }
+        # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
     except Exception as e:
         root.after(0, lambda: output_box.insert("end", f"[오류] 포메이션 정보를 가져오지 못했습니다: {e}\n"))
         return
-    width, height = 820, 900
+    width, height = 820, 1200
     formation_win = tk.Toplevel()
     formation_win.title(f"라인업: {home['team_name']} vs {away['team_name']}")
     formation_win.geometry(f"{width}x{height}")
     canvas = tk.Canvas(formation_win, width=width, height=height, bg="#1a273a")
     canvas.pack()
     mid = height // 2
-    visualize_formation_with_shirt(home, top=60, bottom=mid-10, canvas=canvas, width=width, shirt_color=colors[0], shirt_template_path="shirt_transparent.png", reverse_order=False)
-    visualize_formation_with_shirt(away, top=mid+10, bottom=height-60, canvas=canvas, width=width, shirt_color=colors[1], shirt_template_path="shirt_transparent.png", reverse_order=True)
+    visualize_formation_with_shirt(
+        home, top=60, bottom=mid-10, canvas=canvas, width=width,
+        shirt_color=colors[0], shirt_template_path="shirt_transparent.png",
+        reverse_order=False, event_map=event_map, icon_imgs=icon_imgs, sub_in_players=sub_in_players
+    )
+    visualize_formation_with_shirt(
+        away, top=mid+10, bottom=height-60, canvas=canvas, width=width,
+        shirt_color=colors[1], shirt_template_path="shirt_transparent.png",
+        reverse_order=True, event_map=event_map, icon_imgs=icon_imgs, sub_in_players=sub_in_players
+    )
 
 def on_fetch_info():
     output_box.insert("end", "[INFO] 정보 수집 시작\n")
