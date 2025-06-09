@@ -62,7 +62,7 @@ class VirtualTimer:
 def timer_socket_server(vtimer):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(('127.0.0.1', 50508))  # 타이머 값 전달용 별도 포트!
+        s.bind(('127.0.0.1', 50508)) 
         s.listen(1)
         while True:
             conn, addr = s.accept()
@@ -71,7 +71,7 @@ def timer_socket_server(vtimer):
                     try:
                         value = vtimer.get_time() + "\n"
                         conn.sendall(value.encode())
-                        time.sleep(0.01)  # 100Hz 전송(매우 부드럽게)
+                        time.sleep(0.01)
                     except Exception:
                         break
 
@@ -79,4 +79,4 @@ if __name__ == '__main__':
     vtimer = VirtualTimer()
     threading.Thread(target=timer_socket_server, args=(vtimer,), daemon=True).start()
     while True:
-        time.sleep(10)  # 메인 스레드 블록(서브 스레드만 동작)
+        time.sleep(10)  

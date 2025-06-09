@@ -7,14 +7,14 @@ import numpy as np
 import time
 import re
 
-# ====== 전역 설정 ======
+
 SHIRT_SIZE = (60, 60)
 ICON_SIZE = (32, 32)
 NAME_FONT_SIZE = 18
-NAME_Y_SHIFT = SHIRT_SIZE[1]//2 + 16   # 이름 위치 더 내림
+NAME_Y_SHIFT = SHIRT_SIZE[1]//2 + 16  
 ICON_GAP = 2
 
-# ====== 유틸 ======
+
 def resize_with_aspect(image, max_size):
     iw, ih = image.size
     mw, mh = max_size
@@ -261,7 +261,7 @@ def apply_substitutions(players, subs):
             players_new[idx] = [num, in_name]
     return players_new
 
-# ====== 아이콘 세로 배치, 어시 1.5배 ======
+
 def draw_event_icons_on_shirt(canvas, x, y, events, icon_imgs, icon_size=ICON_SIZE):
     icon_start_x = x + SHIRT_SIZE[0]//2 + 2
     icon_start_y = y - SHIRT_SIZE[1]//2 + 2
@@ -330,7 +330,7 @@ def visualize_formation_with_shirt(team, top, bottom, canvas, width, shirt_color
             events = event_map.get(name, [])
             draw_event_icons_on_shirt(canvas, x, y, events, icon_imgs)
 
-# ====== Tkinter 데모 ======
+
 if __name__ == "__main__":
     url = "https://sports.news.naver.com/wfootball/gamecenter/index?gameId=202406080123"
     shirt_template_path = "shirt_transparent.png"
@@ -353,7 +353,7 @@ if __name__ == "__main__":
 
     width, height = 10000, 16000
     root = tk.Tk()
-    root.geometry(f"{width}x{height}")  # 창 크기 확실히!
+    root.geometry(f"{width}x{height}")  
     c = tk.Canvas(root, width=width, height=height, bg="#1a273a")
     c.pack()
 

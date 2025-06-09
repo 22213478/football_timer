@@ -8,14 +8,13 @@ import numpy as np
 import re
 
 SOCKET_PORT = 50507
-OCR_AREA = (1512, 1218, 1565, 1237)
+OCR_AREA = (0, 0, 1920, 1080)  
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-# 콜백: UI에서 할당할 것!
 on_sync_mode_start = None
 on_sync_mode_stop = None
 
-# 내부 상태
+
 ocr_running = False
 sync_mode = False
 drift_over_count = 0
@@ -23,6 +22,9 @@ timer_started = False
 SYNC_THRESHOLD = 2
 SYNC_REQUIRED_COUNT = 2
 SYNC_DURATION = 8
+def set_area(area):
+    global OCR_AREA
+    OCR_AREA = area
 
 def run_single_ocr():
     x1, y1, x2, y2 = OCR_AREA
@@ -124,7 +126,7 @@ def run_accurate_sync_phase(duration=5):
             last_text = text
             last_ocr_time = t0
         time.sleep(0.15)
-    # 마지막 OCR 시각과 now의 차이를 반영
+
     if last_text and last_ocr_time:
         m, s = last_text.split(":")
         f_sec = int(m) * 60 + float(s) + (time.time() - last_ocr_time +1)
@@ -158,7 +160,7 @@ def toggle_ocr():
     else:
         start_ocr()
 
-def manual_sync(sync_duration=3):  # ★ 여기 3초로
+def manual_sync(sync_duration=3):  
     send_command_to_float_timer("SYNC_ON")
     global sync_mode
     sync_mode = True

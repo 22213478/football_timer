@@ -13,7 +13,7 @@ def show_sync_mode_stop():
     output_box.insert("end", "[INFO] 동기화 모드 종료\n")
     output_box.see("end")
 
-# 콜백 할당
+
 ocr.on_sync_mode_start = show_sync_mode_start
 ocr.on_sync_mode_stop = show_sync_mode_stop
 
@@ -27,9 +27,7 @@ def on_toggle_ocr():
 
 def on_manual_sync():
     ocr.manual_sync()
-    # 메시지는 콜백으로 자동 출력됨
-
-# ---- get_info, formation, event fetch 유지! ----
+  
 event_thread = None
 last_event_set = set()
 
@@ -56,24 +54,22 @@ def show_formation_window():
     try:
         url = get_current_url() + "?tab=lineup"
         home, away, colors = get_lineup_data(url, shirt_template="shirt_transparent.png")
-        # ↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
-        # 이벤트 정보(득점, 어시, 경고, 교체 등)
-        # tab=record로 이벤트를 가져온다!
+   
         event_url = get_current_url() + "?tab=record"
         events = get_events_data(event_url)
         event_map = map_player_events(events)
         subs, sub_in_players = extract_substitutions(events)
-        # 교체 적용
+   
         home["players"] = apply_substitutions(home["players"], subs)
         away["players"] = apply_substitutions(away["players"], subs)
-        # 아이콘 준비
+  
         icon_imgs = {
             "goal": Image.open("goal.png"),
             "assist": Image.open("assist.png"),
             "yellow": make_card_icon((255, 235, 59)),
             "red": make_card_icon((230, 20, 20))
         }
-        # ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
+   
     except Exception as e:
         root.after(0, lambda: output_box.insert("end", f"[오류] 포메이션 정보를 가져오지 못했습니다: {e}\n"))
         return
@@ -96,14 +92,52 @@ def show_formation_window():
     )
 
 def on_fetch_info():
-    output_box.insert("end", "[INFO] 정보 수집 시작\n")
+    output_box.insert("end", "[INFO] 정보 수집중...(10초 정도 예상)\n")
     output_box.see("end")
+    threading.Thread(target=fetch_info_and_show, daemon=True).start()
+
+def fetch_info_and_show():
     show_formation_window()
     start_event_fetch_loop(interval=1)
 
 def start_area_selection():
-    output_box.insert("end", "지정된 영역 좌표: (1512, 1218, 1565, 1237)\n")
-    output_box.see("end")
+    import pyautogui
+    start_x = start_y = 0
+    rect_id = None
+    def on_mouse_down(event):
+        nonlocal start_x, start_y, rect_id
+        start_x, start_y = event.x, event.y
+        if rect_id:
+            canvas.delete(rect_id)
+    def on_mouse_drag(event):
+        nonlocal rect_id
+        if rect_id:
+            canvas.delete(rect_id)
+        rect_id = canvas.create_rectangle(
+            start_x, start_y, event.x, event.y,
+            outline="red", width=2, fill="gray", stipple="gray25"
+        )
+    def on_mouse_up(event):
+        end_x, end_y = event.x, event.y
+        x1 = min(start_x, end_x)
+        y1 = min(start_y, end_y)
+        x2 = max(start_x, end_x)
+        y2 = max(start_y, end_y)
+        ocr.set_area((x1, y1, x2, y2))
+        coord_str = f"지정된 영역 좌표: {(x1, y1, x2, y2)}\n"
+        root.after(0, lambda: output_box.insert("end", coord_str))
+        overlay.destroy()
+    screen_w, screen_h = pyautogui.size()
+    overlay = tk.Toplevel()
+    overlay.attributes('-fullscreen', True)
+    overlay.attributes('-alpha', 0.3)
+    overlay.attributes('-topmost', True)
+    overlay.config(bg='black')
+    canvas = tk.Canvas(overlay, bg='lightgray', highlightthickness=0)
+    canvas.pack(fill=tk.BOTH, expand=True)
+    canvas.bind("<ButtonPress-1>", on_mouse_down)
+    canvas.bind("<B1-Motion>", on_mouse_drag)
+    canvas.bind("<ButtonRelease-1>", on_mouse_up)
 
 def get_current_url():
     return url_var.get().split("?")[0]
@@ -114,6 +148,10 @@ root.geometry("500x500")
 
 top_frame = tk.Frame(root)
 top_frame.pack(pady=10)
+ 
+label_url = tk.Label(top_frame, text="경기 URL:")
+label_url.pack(side="left", padx=5)
+
 
 url_var = tk.StringVar(value="https://sports.daum.net/match/80085755?tab=lineup")
 tk.Entry(top_frame, textvariable=url_var, width=45).pack(side="left", padx=5)
@@ -121,7 +159,7 @@ tk.Button(top_frame, text="정보 가져오기", command=on_fetch_info).pack(sid
 
 output_box = tk.Text(root, height=15, width=60)
 output_box.pack(pady=10)
-output_box.insert("end", "샘플 로그\n")
+
 
 bottom_frame = tk.Frame(root)
 bottom_frame.pack(pady=20)
